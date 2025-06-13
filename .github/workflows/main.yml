@@ -1,8 +1,8 @@
 name: GigaFile Miner (Manual Only)
 
-# 手動実行トリガー
+# 完全手動実行トリガー
 on:
-  workflow_dispatch:
+  workflow_dispatch: {}
 
 env:
   BASE_URL: 'https://xgf.nu/'
@@ -14,6 +14,9 @@ jobs:
   run-miner:
     runs-on: ubuntu-latest
     steps:
+      - name: リポジトリをチェックアウト
+        uses: actions/checkout@v3
+
       - name: Pythonをセットアップ
         uses: actions/setup-python@v4
         with:
@@ -28,7 +31,7 @@ jobs:
         shell: bash
         run: |
           python - << 'EOF'
-import os, sys, time, random, requests
+import os, time, random, requests
 
 # 設定
 BASE_URL = os.getenv('BASE_URL')
@@ -46,17 +49,18 @@ class Color:
 # ランダム文字列生成
 rand_str = lambda n: ''.join(random.choices(chars, k=n))
 
-for i in range(MAX_ITER):
+for i in range(1, MAX_ITER+1):
     suf_len = random.randint(4,5)
     token = rand_str(suf_len)
     url = BASE_URL + token
-    print(f"[+] [ {token} ] mining...", end="\r")
+    print(f"[+] [ {token} ] mining... ({i}/{MAX_ITER})", end="\r")
     try:
         resp = requests.get(url, timeout=10)
         # リダイレクトや存在判定
         if len(resp.url) > len(BASE_URL) + suf_len:
             print(f"[*] [ {token} ] HIT! --> {Color.YELLOW}{resp.url}{Color.END}")
     except Exception as e:
-        print(f"Error: {e}")
+        echo = getattr(e, 'message', str(e))
+        print(f"Error: {echo}")
     time.sleep(DELAY_SEC)
 EOF
