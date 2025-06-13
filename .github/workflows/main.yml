@@ -1,4 +1,3 @@
-# .github/workflows/miner.yml
 name: GigaFile Miner (Manual Only)
 
 on:
@@ -6,17 +5,13 @@ on:
 
 jobs:
   miner:
-    name: Run GigaFile Miner script
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Run inline Python miner
+      - name: Run GigaFile Miner script
         run: |
           python3 - << 'EOF'
-          import requests, random
+          import requests, random, time
 
           lower = "abcdefghijklmnopqrstuvwxyz"
           upper = lower.upper()
@@ -31,10 +26,16 @@ jobs:
               while True:
                   s = rand_str(random.randint(4,5))
                   new_url = url + s
-                  print(f"\r[+] [ {s} ] mining...", end=" ")
-                  r = requests.get(new_url, timeout=10)
-                  if len(r.url) > 30:
-                      print(f"\r[*] [ {s} ] discovered --> {r.url}")
+                  print(f"[+] [ {s} ] mining...", end="\r")
+                  try:
+                      r = requests.get(new_url, timeout=10)
+                      if len(r.url) > 30:
+                          print(f"[*] [ {s} ] discovered --> {r.url}")
+                  except requests.exceptions.ReadTimeout:
+                      print(f"[!] [ {s} ] Timeout, retrying...")
+                  except requests.exceptions.RequestException as e:
+                      print(f"[!] [ {s} ] Request failed: {e}")
+                  time.sleep(0.5)  # 連続アクセスしすぎ防止
           except KeyboardInterrupt:
               print("\nbye")
           EOF
