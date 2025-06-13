@@ -11,7 +11,7 @@ jobs:
       - name: Run GigaFile Miner script
         run: |
           python3 - << 'EOF'
-          import requests, random, time
+          import requests, random, time, sys
 
           lower = "abcdefghijklmnopqrstuvwxyz"
           upper = lower.upper()
@@ -22,20 +22,27 @@ jobs:
 
           url = "https://xgf.nu/"
 
+          max_iterations = 100  # 最大試行回数（無限ループ防止）
+          hit_count = 0
+
           try:
-              while True:
+              for _ in range(max_iterations):
                   s = rand_str(random.randint(4,5))
                   new_url = url + s
-                  print(f"[+] [ {s} ] mining...", end="\r")
+                  sys.stdout.write(f"[+] Trying: {new_url}\n")
+                  sys.stdout.flush()
                   try:
                       r = requests.get(new_url, timeout=10)
-                      if len(r.url) > 30:
-                          print(f"[*] [ {s} ] discovered --> {r.url}")
+                      if len(r.url) > 30 and r.url != new_url:
+                          hit_count += 1
+                          print(f"[!] HIT [{hit_count}]: {r.url}")
                   except requests.exceptions.ReadTimeout:
-                      print(f"[!] [ {s} ] Timeout, retrying...")
+                      print(f"[!] Timeout on {new_url}")
                   except requests.exceptions.RequestException as e:
-                      print(f"[!] [ {s} ] Request failed: {e}")
-                  time.sleep(0.5)  # 連続アクセスしすぎ防止
+                      print(f"[!] Request failed on {new_url}: {e}")
+                  time.sleep(0.5)
           except KeyboardInterrupt:
-              print("\nbye")
+              print("\nStopped manually.")
+
+          print(f"\nFinished mining. Total hits: {hit_count}")
           EOF
