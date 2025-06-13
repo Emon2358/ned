@@ -1,0 +1,82 @@
+# .github/workflows/find_xgf_urls.yml
+name: Find xgf.nu URLs
+
+on:
+  workflow_dispatch:
+    inputs:
+      count:
+        description: 'Generate and check this many random URLs'
+        required: true
+        default: 100
+        type: number
+
+permissions:
+  contents: write  # リポジトリへの push を許可
+
+jobs:
+  search:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          persist-credentials: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+
+      - name: Generate and check URLs
+        run: |
+          cat > check_urls.py << 'EOF'
+          import sys, random, string, requests
+          
+          def random_slug():
+              chars = string.ascii_letters + string.digits
+              return ''.join(random.choices(chars, k=5))
+          
+          def main(n):
+              hits = []
+              for _ in range(n):
+                  slug = random_slug()
+                  url = f'https://xgf.nu/{slug}'
+                  try:
+                      r = requests.head(url, allow_redirects=True, timeout=5)
+                      if r.status_code == 200:
+                          print(f'Found: {url}')
+                          hits.append(url)
+                  except requests.RequestException:
+                      pass
+              # 上書きではなくアペンドしたい場合は 'a'
+              with open('hits.txt', 'w') as f:
+                  f.write('\n'.join(hits))
+          
+          if __name__ == '__main__':
+              count = int(sys.argv[1])
+              main(count)
+          EOF
+
+          # 古い hits.txt をクリア（もし存在すれば）
+          rm -f hits.txt
+
+          # 実行
+          python check_urls.py ${{ github.event.inputs.count }}
+
+      - name: Commit and push hits.txt
+        run: |
+          if [ -s hits.txt ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add hits.txt
+            git commit -m "Update hits.txt : ${GITHUB_RUN_NUMBER}"
+            git push
+          else
+            echo "No hits found; nothing to commit."
+          fi
