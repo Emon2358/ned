@@ -1,126 +1,62 @@
-# .github/workflows/find_xgf_urls.yml
-name: Find xgf.nu URLs (Max Speed & Full Verbose)
+name: GigaFile Miner (Manual Only)
 
+# 手動実行トリガー
 on:
   workflow_dispatch:
-    inputs:
-      count:
-        description: 'チェックする URL 数'
-        required: true
-        default: 100000
-        type: number
-      concurrency:
-        description: '同時リクエスト数'
-        required: true
-        default: 500
-        type: number
 
-permissions:
-  contents: write
+env:
+  BASE_URL: 'https://xgf.nu/'
+  MAX_ITER: '200'       # 1ジョブあたりの最大試行回数
+  DELAY_SEC: '0.5'      # リクエスト間隔（秒）
+  TERM: 'xterm-256color'
 
 jobs:
-  search:
+  run-miner:
     runs-on: ubuntu-latest
-    env:
-      COUNT: ${{ github.event.inputs.count }}
-      CONCURRENCY: ${{ github.event.inputs.concurrency }}
-      TIMEOUT: 5       # 秒
-      RETRIES: 2       # 再試行回数
-
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v3
-        with:
-          persist-credentials: true
-
-      - name: Set up Python
+      - name: Pythonをセットアップ
         uses: actions/setup-python@v4
         with:
           python-version: '3.x'
 
-      - name: Install deps
+      - name: 依存パッケージをインストール
         run: |
           python -m pip install --upgrade pip
-          pip install aiohttp asyncio tqdm
+          pip install requests
 
-      - name: Create and run check script
+      - name: GigaFile Minerを実行 (inline)
+        shell: bash
         run: |
-          cat > check_urls_async.py << 'EOF'
-          import os, asyncio, random, string
-          import aiohttp
-          from tqdm import tqdm
+          python - << 'EOF'
+import os, sys, time, random, requests
 
-          COUNT = int(os.getenv('COUNT', '100000'))
-          CONCURRENCY = int(os.getenv('CONCURRENCY', '500'))
-          TIMEOUT = float(os.getenv('TIMEOUT', '5'))
-          RETRIES = int(os.getenv('RETRIES', '2'))
-          USER_AGENT = "Mozilla/5.0 (compatible; XgfScanner/1.0)"
+# 設定
+BASE_URL = os.getenv('BASE_URL')
+MAX_ITER = int(os.getenv('MAX_ITER'))
+DELAY_SEC = float(os.getenv('DELAY_SEC'))
 
-          sem = asyncio.Semaphore(CONCURRENCY)
-          hits = []
+# 文字リスト
+chars = list("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
 
-          async def fetch(session, url):
-              headers = {"User-Agent": USER_AGENT}
-              for attempt in range(1, RETRIES + 2):
-                  try:
-                      async with session.get(url, headers=headers, timeout=TIMEOUT) as resp:
-                          status = resp.status
-                      print(f"[{url}] Attempt {attempt}: HTTP {status}")
-                      # 200 or 403 をヒットとみなす
-                      if status in (200, 403):
-                          return True
-                      return False
-                  except Exception as e:
-                      print(f"[{url}] Attempt {attempt} error: {e!r}")
-                      if attempt <= RETRIES:
-                          await asyncio.sleep(0.1)
-                          continue
-                      return False
+# ANSIカラー
+class Color:
+    YELLOW = '\033[33m'
+    END    = '\033[0m'
 
-          async def worker(_idx, session):
-              slug = ''.join(random.choices(string.ascii_letters + string.digits, k=5))
-              url = f"https://xgf.nu/{slug}"
-              async with sem:
-                  if await fetch(session, url):
-                      hits.append(url)
+# ランダム文字列生成
+rand_str = lambda n: ''.join(random.choices(chars, k=n))
 
-          async def main():
-              conn = aiohttp.TCPConnector(limit=CONCURRENCY)
-              timeout = aiohttp.ClientTimeout(total=None)
-              async with aiohttp.ClientSession(connector=conn, timeout=timeout) as session:
-                  tasks = [worker(i, session) for i in range(COUNT)]
-                  for coro in tqdm(asyncio.as_completed(tasks), total=COUNT):
-                      await coro
-
-              # 結果をファイルに書き出し
-              with open('hits.txt', 'w') as f:
-                  for u in hits:
-                      f.write(u + "\n")
-              print(f"===== Total hits: {len(hits)} =====")
-
-          if __name__ == "__main__":
-              asyncio.run(main())
-          EOF
-
-          # 古い結果を消去
-          rm -f hits.txt
-
-          # 実行
-          python check_urls_async.py
-
-      - name: Show log & hits.txt
-        run: |
-          echo "===== Log end. hits.txt contents ====="
-          cat hits.txt || echo "(no hits found)"
-
-      - name: Commit & Push hits.txt
-        run: |
-          if [ -s hits.txt ]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add hits.txt
-            git commit -m "Update hits.txt (#${{ github.run_number }})"
-            git push
-          else
-            echo "No hits to commit."
-          fi
+for i in range(MAX_ITER):
+    suf_len = random.randint(4,5)
+    token = rand_str(suf_len)
+    url = BASE_URL + token
+    print(f"[+] [ {token} ] mining...", end="\r")
+    try:
+        resp = requests.get(url, timeout=10)
+        # リダイレクトや存在判定
+        if len(resp.url) > len(BASE_URL) + suf_len:
+            print(f"[*] [ {token} ] HIT! --> {Color.YELLOW}{resp.url}{Color.END}")
+    except Exception as e:
+        print(f"Error: {e}")
+    time.sleep(DELAY_SEC)
+EOF
